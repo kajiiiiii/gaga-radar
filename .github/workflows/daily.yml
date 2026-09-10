@@ -1,0 +1,41 @@
+name: daily-scrape
+
+# 日次スクレイピングをクラウド(GitHub Actions)で実行し、結果をGoogle Sheetsへ保存する。
+# これでPCを起動していなくても毎日データが溜まる（＝PCからCSVを消してよい）。
+#
+# 事前設定（GitHubリポジトリの Settings > Secrets and variables > Actions）:
+#   - GOOGLE_CREDENTIALS : サービスアカウントJSONの中身をまるごと貼り付け
+#   スプレッドシートは config.py の SPREADSHEET_NAME を、そのサービスアカウントに編集者共有しておく。
+
+on:
+  schedule:
+    - cron: "0 19 * * *"   # 毎日 19:00 UTC = 日本時間 翌04:00
+  workflow_dispatch: {}     # 手動実行も可
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: daily-scrape
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: サービスアカウント鍵を書き出し
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+        run: printf '%s' "$GOOGLE_CREDENTIALS" > credentials.json
+
+      - name: 日次スクレイプ（Sheetsのみへ保存）
+        run: python daily.py --sheets-only
+
+      - name: 後始末（鍵を消す）
+        if: always()
+        run: rm -f credentials.json
